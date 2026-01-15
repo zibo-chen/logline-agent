@@ -4,9 +4,14 @@
 //!
 //! Usage:
 //!   logline-agent --name <PROJECT_NAME> --server <IP:PORT> --file <LOG_FILE_PATH>
+//!   logline-agent --name <PROJECT_NAME> --server <IP:PORT> --file <LOG_FILE_PATH> --device-id <DEVICE_ID>
 //!
-//! Example:
+//! Examples:
+//!   # Auto-detect hostname as device identifier
 //!   logline-agent --name "payment-service" --server "192.168.1.10:12500" --file "/var/log/payment.log"
+//!
+//!   # Specify custom device identifier
+//!   logline-agent --name "payment-service" --server "192.168.1.10:12500" --file "/var/log/payment.log" --device-id "prod-server-01"
 
 mod connection;
 mod protocol;
@@ -14,6 +19,8 @@ mod tail;
 
 use clap::Parser;
 use connection::{ConnectionConfig, ReconnectingConnection};
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use tail::FileTail;
 use tokio::sync::mpsc;
@@ -48,6 +55,10 @@ struct Args {
     /// Verbose logging
     #[arg(short, long, default_value = "false")]
     verbose: bool,
+
+    /// Device identifier (defaults to hostname)
+    #[arg(short = 'd', long)]
+    device_id: Option<String>,
 }
 
 #[tokio::main]
@@ -73,6 +84,28 @@ async fn main() -> anyhow::Result<()> {
         anyhow::bail!("Log file does not exist: {}", args.file.display());
     }
 
+    // Get device identifier (from args or hostname)
+    let device_id = if let Some(id) = args.device_id {
+        id
+    } else {
+        hostname::get()
+            .ok()
+            .and_then(|h| h.into_string().ok())
+            .unwrap_or_else(|| "unknown".to_string())
+    };
+    tracing::info!("  Device: {}", device_id);
+
+    // Generate unique agent ID from device + file path
+    let canonical_path = args
+        .file
+        .canonicalize()
+        .unwrap_or_else(|_| args.file.clone());
+    let mut hasher = DefaultHasher::new();
+    device_id.hash(&mut hasher);
+    canonical_path.to_string_lossy().hash(&mut hasher);
+    let agent_id = format!("{:x}", hasher.finish());
+    tracing::info!("  Agent ID: {} (device: {})", agent_id, device_id);
+
     // Create channel for file data
     let (tx, rx) = mpsc::channel::<Vec<u8>>(1000);
 
@@ -87,7 +120,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     // Create connection manager
-    let conn_config = ConnectionConfig::new(args.server, args.name);
+    let conn_config = ConnectionConfig::new(args.server, args.name, agent_id);
     let connection = ReconnectingConnection::new(conn_config);
 
     // Spawn file watcher task

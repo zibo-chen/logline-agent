@@ -1,6 +1,6 @@
 [package]
 name = "logline-agent"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Lightweight log streaming agent for Logline"
 authors = ["Zibo Chen <qw.54@163.com>"]
@@ -28,6 +28,9 @@ serde_json = "1.0"
 # Error handling
 anyhow = "1.0"
 thiserror = "1.0"
+
+# System information
+hostname = "0.4"
 
 # Logging
 tracing = "0.1"

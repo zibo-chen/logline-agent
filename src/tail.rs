@@ -7,7 +7,7 @@ use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watche
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{channel, Receiver};
+use std::sync::mpsc::channel;
 use std::time::Duration;
 use tokio::sync::mpsc as tokio_mpsc;
 
@@ -58,11 +58,7 @@ impl FileTail {
         let metadata = std::fs::metadata(&path).context("Failed to get file metadata")?;
 
         let file_size = metadata.len();
-        let mut offset = if tail_bytes >= file_size {
-            0 // Send entire file
-        } else {
-            file_size - tail_bytes
-        };
+        let mut offset = file_size.saturating_sub(tail_bytes);
 
         // If we're not starting from the beginning, find a valid line boundary
         if offset > 0 {
@@ -232,81 +228,5 @@ impl FileTail {
             EventKind::Modify(_) | EventKind::Create(_) => event.paths.iter().any(|p| p == path),
             _ => false,
         }
-    }
-}
-
-/// Polling-based file tail (fallback when notify doesn't work well)
-pub struct PollingFileTail {
-    path: PathBuf,
-    offset: u64,
-    poll_interval: Duration,
-}
-
-impl PollingFileTail {
-    pub fn new(path: impl AsRef<Path>, poll_interval: Duration) -> Result<Self> {
-        let path = path.as_ref().to_path_buf();
-
-        let metadata = std::fs::metadata(&path).context("Failed to get file metadata")?;
-
-        Ok(Self {
-            path,
-            offset: metadata.len(),
-            poll_interval,
-        })
-    }
-
-    pub async fn watch(mut self, tx: tokio_mpsc::Sender<Vec<u8>>) -> Result<()> {
-        tracing::info!(
-            "Started polling: {} (interval: {:?})",
-            self.path.display(),
-            self.poll_interval
-        );
-
-        loop {
-            tokio::time::sleep(self.poll_interval).await;
-
-            match self.read_new_content() {
-                Ok(Some(data)) => {
-                    if tx.send(data).await.is_err() {
-                        break;
-                    }
-                }
-                Ok(None) => {}
-                Err(e) => {
-                    tracing::warn!("Error reading file: {}", e);
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    fn read_new_content(&mut self) -> Result<Option<Vec<u8>>> {
-        let mut file = File::open(&self.path)?;
-        let metadata = file.metadata()?;
-        let current_size = metadata.len();
-
-        if current_size < self.offset {
-            self.offset = 0;
-        }
-
-        if current_size == self.offset {
-            return Ok(None);
-        }
-
-        file.seek(SeekFrom::Start(self.offset))?;
-
-        let bytes_to_read = (current_size - self.offset) as usize;
-        let mut buffer = vec![0u8; bytes_to_read];
-        let bytes_read = file.read(&mut buffer)?;
-
-        if bytes_read == 0 {
-            return Ok(None);
-        }
-
-        buffer.truncate(bytes_read);
-        self.offset += bytes_read as u64;
-
-        Ok(Some(buffer))
     }
 }

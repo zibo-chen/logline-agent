@@ -17,6 +17,8 @@ pub struct ConnectionConfig {
     pub server_addr: String,
     /// Project name for handshake
     pub project_name: String,
+    /// Unique agent ID
+    pub agent_id: String,
     /// Connection timeout
     pub connect_timeout: Duration,
     /// Initial reconnect delay
@@ -26,10 +28,11 @@ pub struct ConnectionConfig {
 }
 
 impl ConnectionConfig {
-    pub fn new(server_addr: String, project_name: String) -> Self {
+    pub fn new(server_addr: String, project_name: String, agent_id: String) -> Self {
         Self {
             server_addr,
             project_name,
+            agent_id,
             connect_timeout: Duration::from_secs(10),
             initial_reconnect_delay: Duration::from_secs(1),
             max_reconnect_delay: Duration::from_secs(30),
@@ -85,7 +88,7 @@ impl Connection {
         let mut writer = BufWriter::new(stream);
 
         // Send handshake
-        let handshake = Frame::handshake(&self.config.project_name)?;
+        let handshake = Frame::handshake(&self.config.project_name, &self.config.agent_id)?;
         handshake.write_to(&mut writer)?;
 
         self.stream = Some(writer);
@@ -133,6 +136,7 @@ impl Connection {
     }
 
     /// Get current state
+    #[allow(dead_code)]
     pub fn state(&self) -> &ConnectionState {
         &self.state
     }

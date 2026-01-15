@@ -4,14 +4,11 @@
 //! [Length: u32][Type: u8][Payload: bytes]
 
 use serde::{Deserialize, Serialize};
-use std::io::{self, Read, Write};
+use std::io::{self, Write};
 use thiserror::Error;
 
 /// Protocol version
 pub const PROTOCOL_VERSION: u8 = 1;
-
-/// Default server port
-pub const DEFAULT_PORT: u16 = 12500;
 
 /// Message type identifiers
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,9 +40,6 @@ pub enum ProtocolError {
     #[error("Unknown message type: {0}")]
     UnknownMessageType(u8),
 
-    #[error("Invalid frame: {0}")]
-    InvalidFrame(String),
-
     #[error("Serialization error: {0}")]
     Serialization(String),
 }
@@ -56,6 +50,8 @@ pub struct HandshakePayload {
     pub project_name: String,
     #[serde(default = "default_version")]
     pub version: u8,
+    /// Unique agent ID (hash of log file path)
+    pub agent_id: String,
 }
 
 fn default_version() -> u8 {
@@ -63,10 +59,11 @@ fn default_version() -> u8 {
 }
 
 impl HandshakePayload {
-    pub fn new(project_name: impl Into<String>) -> Self {
+    pub fn new(project_name: impl Into<String>, agent_id: impl Into<String>) -> Self {
         Self {
             project_name: project_name.into(),
             version: PROTOCOL_VERSION,
+            agent_id: agent_id.into(),
         }
     }
 }
@@ -87,8 +84,11 @@ impl Frame {
     }
 
     /// Create a handshake frame
-    pub fn handshake(project_name: impl Into<String>) -> Result<Self, ProtocolError> {
-        let payload = HandshakePayload::new(project_name);
+    pub fn handshake(
+        project_name: impl Into<String>,
+        agent_id: impl Into<String>,
+    ) -> Result<Self, ProtocolError> {
+        let payload = HandshakePayload::new(project_name, agent_id);
         let bytes = serde_json::to_vec(&payload)
             .map_err(|e| ProtocolError::Serialization(e.to_string()))?;
         Ok(Self::new(MessageType::Handshake, bytes))
