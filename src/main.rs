@@ -29,7 +29,7 @@ use tokio::sync::mpsc;
 #[derive(Parser, Debug)]
 #[command(name = "logline-agent")]
 #[command(author = "Logline Team")]
-#[command(version = "0.1.0")]
+#[command(version = env!("CARGO_PKG_VERSION"))]
 #[command(about = "Lightweight log streaming agent for Logline", long_about = None)]
 struct Args {
     /// Project/service name identifier

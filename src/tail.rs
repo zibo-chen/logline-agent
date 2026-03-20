@@ -230,3 +230,32 @@ impl FileTail {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    #[test]
+    fn tail_bytes_starts_after_previous_newline() {
+        let mut file = NamedTempFile::new().expect("temp file");
+        write!(file, "line-1\nline-2\nline-3").expect("write temp log");
+        file.flush().expect("flush temp log");
+
+        let tail = FileTail::with_tail_bytes(file.path(), 8).expect("tail");
+
+        assert_eq!(tail.offset, 14);
+    }
+
+    #[test]
+    fn tail_bytes_falls_back_to_utf8_boundary_without_newline() {
+        let mut file = NamedTempFile::new().expect("temp file");
+        write!(file, "abc中def").expect("write utf8 log");
+        file.flush().expect("flush temp log");
+
+        let tail = FileTail::with_tail_bytes(file.path(), 5).expect("tail");
+
+        assert_eq!(tail.offset, 6);
+    }
+}

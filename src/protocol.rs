@@ -124,3 +124,30 @@ impl Frame {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn handshake_frame_uses_current_protocol_version() {
+        let frame = Frame::handshake("api", "agent-1").expect("handshake frame");
+        let payload: HandshakePayload =
+            serde_json::from_slice(&frame.payload).expect("handshake payload");
+
+        assert_eq!(frame.message_type, MessageType::Handshake);
+        assert_eq!(payload.project_name, "api");
+        assert_eq!(payload.agent_id, "agent-1");
+        assert_eq!(payload.version, PROTOCOL_VERSION);
+    }
+
+    #[test]
+    fn encode_writes_big_endian_length_prefix() {
+        let frame = Frame::log_data(vec![1, 2, 3, 4]);
+        let encoded = frame.encode();
+
+        assert_eq!(u32::from_be_bytes(encoded[0..4].try_into().unwrap()), 5);
+        assert_eq!(encoded[4], MessageType::LogData as u8);
+        assert_eq!(&encoded[5..], &[1, 2, 3, 4]);
+    }
+}
